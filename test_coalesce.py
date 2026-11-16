@@ -101,6 +101,26 @@ class UnionTests(unittest.TestCase):
         self.assertEqual(media[0]['object']['title'], 'Earlier title')
         self.assertEqual([r['object']['title'] for r in media[0]['observations']], ['Earlier title', ''])
 
+    def test_fresh_union_rehashes_changed_canonical_media(self):
+        a, b = self.bundle('earlier', '2021'), self.bundle('later', '2022')
+        old = self.root / 'old-union'
+        publish(a, b, old)
+        old_hashes = {r['sha256'] for r in json.loads((old / 'media-manifest.json').read_text()).values()}
+        fresh = []
+        for bundle in [a, b]:
+            media = bundle.source / 'photos_and_videos/p.png'
+            media.write_bytes(media.read_bytes() + b'synthetic changed canonical bytes')
+            output = self.root / (bundle.label + '-fresh')
+            Conversion(bundle.source, ZoneInfo('America/New_York')).run().write(output)
+            fresh.append(Bundle(bundle.label, output, bundle.source))
+        new = self.root / 'new-union'
+        publish(*fresh, new)
+        manifest = json.loads((new / 'media-manifest.json').read_text())
+        self.assertTrue(old_hashes.isdisjoint({r['sha256'] for r in manifest.values()}))
+        from coalesce import file_hash
+        for uri, entry in manifest.items():
+            self.assertEqual(file_hash(new / 'archive' / uri), file_hash(Path(entry['source'])))
+
     def test_missing_post_title_requires_primary_payload_and_retains_title(self):
         a, b = self.bundle('2021', '2021'), self.bundle('2022', '2022')
         original = next(r for r in b.records if r['kind'] == 'post')

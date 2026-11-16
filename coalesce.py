@@ -46,7 +46,7 @@ def save(path, value):
 
 
 class Bundle:
-    def __init__(self, label, path, source, media_cache=None):
+    def __init__(self, label, path, source):
         self.label, self.path, self.source = label, Path(path), Path(source).resolve(strict=True)
         if (self.path / "INCOMPLETE").exists():
             raise Refusal("incomplete_input_bundle")
@@ -66,11 +66,8 @@ class Bundle:
             src = self.source / rel
             if src.resolve() != src or rel not in self.manifest["files"]:
                 raise Refusal("unsafe_bundle_media")
-            cached = (media_cache or {}).get(str(src))
-            self.media[uri] = {"sha256": cached["sha256"] if cached else file_hash(src), "source": src,
+            self.media[uri] = {"sha256": file_hash(src), "source": src,
                                "extension": src.suffix.lower()}
-            if cached:
-                self.media[uri]["cached_copy"] = cached["copy"]
         document = json.loads((self.path / "normalized.json").read_text())
         from formats import modern_files
         files = modern_files(document)
@@ -273,7 +270,7 @@ def publish(a, b, out, target="normalized"):
     for uri, entry in media_map.items():
         dest = archive / uri
         dest.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        shutil.copyfile(entry.get("cached_copy", entry["source"]), dest)
+        shutil.copyfile(entry["source"], dest)
         dest.chmod(0o600)
         if file_hash(dest) != entry["sha256"]:
             raise Refusal("copied_media_mismatch")
@@ -320,23 +317,13 @@ def main():
     p.add_argument("--earlier-source", required=True, type=Path)
     p.add_argument("--later-source", required=True, type=Path)
     p.add_argument("--output", required=True, type=Path)
-    p.add_argument("--verified-media-cache", type=Path, help="prior complete union; reuse media hashes only, with unchanged source stats and fresh copied-byte verification")
     p.add_argument("--earlier-label", default="earlier")
     p.add_argument("--later-label", default="later")
     p.add_argument("--target", choices=["normalized", "meta-json", "timelinize"], default="normalized")
     a = p.parse_args()
     os.umask(0o077)
-    cache = {}
-    if a.verified_media_cache:
-        previous = a.verified_media_cache
-        if (previous / "INCOMPLETE").exists() or file_hash(previous / "archive.zip") != json.loads((previous / "package-sha256.json").read_text())["archive.zip"]:
-            raise Refusal("invalid_media_cache")
-        for uri, entry in json.loads((previous / "media-manifest.json").read_text()).items():
-            if entry["source"] in cache and cache[entry["source"]]["sha256"] != entry["sha256"]:
-                raise Refusal("media_cache_conflict")
-            cache[entry["source"]] = {"sha256": entry["sha256"], "copy": previous / "archive" / uri}
-    earlier = Bundle(a.earlier_label, a.earlier, a.earlier_source, cache)
-    later = Bundle(a.later_label, a.later, a.later_source, cache)
+    earlier = Bundle(a.earlier_label, a.earlier, a.earlier_source)
+    later = Bundle(a.later_label, a.later, a.later_source)
     if a.earlier_label == a.later_label or not all(__import__("re").fullmatch(r"[A-Za-z0-9_-]+", label) for label in [a.earlier_label, a.later_label]):
         raise Refusal("invalid_generation_labels")
     print(json.dumps(publish(earlier, later, a.output, a.target), indent=2))

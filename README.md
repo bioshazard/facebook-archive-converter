@@ -150,10 +150,9 @@ Union outputs add `union-ledger.json` (every selected/quarantined occurrence and
 all source observations), `thread-correspondence.json`, per-generation coverage/
 refusal/source manifests, `media-manifest.json` and `package-sha256.json`.
 Union archives always copy and rehash referenced media, and are explicitly partial.
-`--verified-media-cache PRIOR_UNION` optionally reuses previous hashes/copies only
-with a complete archive matching its package hash; source stat/HTML checks and
-new copied-byte verification still run. It does not reuse timestamps or identities.
-The source stat/cache assumption is explicit; omit this option for fresh hashes.
+Referenced media is freshly hashed from the canonical roots on every run. No
+prior output cache is trusted as evidence of current canonical bytes. Copy hashes
+are checked against those fresh source hashes before completing publication.
 
 ## Verify and develop
 
